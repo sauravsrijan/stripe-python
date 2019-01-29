@@ -1,5 +1,5 @@
 import sys
-from threading import Thread
+from threading import Thread, Lock
 import json
 import warnings
 
@@ -71,6 +71,38 @@ class TestIntegration(object):
         stripe.api_base = "http://localhost:%s" % self.mock_server_port
         stripe.Balance.retrieve()
         assert MockServerRequestHandler.num_requests == 1
+
+    def test_multithreading_stress_test(self):
+        class MockServerRequestHandler(BaseHTTPRequestHandler):
+            num_requests = 0
+            num_requests_lock = Lock()
+
+            def do_GET(self):
+                with self.__class__.num_requests_lock:
+                    self.__class__.num_requests += 1
+
+                self.send_response(200)
+                self.send_header(
+                    "Content-Type", "application/json; charset=utf-8"
+                )
+                self.end_headers()
+                self.wfile.write(json.dumps({}).encode("utf-8"))
+                return
+
+        self.setup_mock_server(MockServerRequestHandler)
+
+        stripe.api_base = "http://localhost:%s" % self.mock_server_port
+
+        for i in range(40):
+            threads = [
+                Thread(target=lambda: stripe.Balance.retrieve()) for i in range(10)
+            ]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+
+        assert MockServerRequestHandler.num_requests == 400
 
     def test_hits_proxy_through_default_http_client(self):
         class MockServerRequestHandler(BaseHTTPRequestHandler):
