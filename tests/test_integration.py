@@ -178,11 +178,15 @@ class TestIntegration(object):
     def test_requests_client_thread_safety(self):
         self._test_client_is_thread_safe(stripe.http_client.RequestsClient)
 
-    @pytest.mark.skipif(not stripe.http_client.urlfetch, reason="requires urlfetch")
+    @pytest.mark.skipif(
+        not stripe.http_client.urlfetch, reason="requires urlfetch"
+    )
     def test_urlfetch_client_thread_safety(self):
         self._test_client_is_thread_safe(stripe.http_client.UrlFetchClient)
 
-    @pytest.mark.skipif(not stripe.http_client.pycurl, reason="requires pycurl")
+    @pytest.mark.skipif(
+        not stripe.http_client.pycurl, reason="requires pycurl"
+    )
     def test_pycurl_client_thread_safety(self):
         self._test_client_is_thread_safe(stripe.http_client.PycurlClient)
 
