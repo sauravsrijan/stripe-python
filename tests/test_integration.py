@@ -1,5 +1,5 @@
 import sys
-from threading import Thread
+from threading import Thread, Lock
 import json
 import warnings
 
@@ -27,16 +27,19 @@ class TestIntegration(object):
             "api_base": stripe.api_base,
             "api_key": stripe.api_key,
             "default_http_client": stripe.default_http_client,
+            "max_network_retries": stripe.max_network_retries,
             "proxy": stripe.proxy,
         }
         stripe.api_base = "http://localhost:12111"  # stripe-mock
         stripe.api_key = "sk_test_123"
         stripe.default_http_client = None
+        stripe.max_network_retries = 3
         stripe.proxy = None
         yield
         stripe.api_base = orig_attrs["api_base"]
         stripe.api_key = orig_attrs["api_key"]
         stripe.default_http_client = orig_attrs["default_http_client"]
+        stripe.max_network_retries = orig_attrs["max_network_retries"]
         stripe.proxy = orig_attrs["proxy"]
 
     def setup_mock_server(self, handler):
@@ -126,3 +129,45 @@ class TestIntegration(object):
         )
         stripe.Balance.retrieve()
         assert MockServerRequestHandler.num_requests == 1
+
+    def _test_client_is_thread_safe(self, client_ctor):
+        class MockServerRequestHandler(BaseHTTPRequestHandler):
+            num_requests = 0
+            lock = Lock()
+
+            def do_GET(self):
+                with self.__class__.lock:
+                    self.__class__.num_requests += 1
+
+                self.send_response(200)
+                self.send_header(
+                    "Content-Type", "application/json; charset=utf-8"
+                )
+                self.end_headers()
+                self.wfile.write(json.dumps({}).encode("utf-8"))
+                return
+
+        self.setup_mock_server(MockServerRequestHandler)
+        stripe.api_base = "http://localhost:%s" % self.mock_server_port
+
+        stripe.default_http_client = client_ctor()
+
+        threads = [Thread(target=lambda: stripe.Balance.retrieve()) for i in range(10)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert MockServerRequestHandler.num_requests == 10
+
+    def test_requests_client_thread_safety(self):
+        self._test_client_is_thread_safe(stripe.http_client.RequestsClient)
+
+    def test_urlfetch_client_thread_safety(self):
+        self._test_client_is_thread_safe(stripe.http_client.UrlFetchClient)
+
+    def test_pycurl_client_thread_safety(self):
+        self._test_client_is_thread_safe(stripe.http_client.PycurlClient)
+
+    def test_urllib2_client_thread_safety(self):
+        self._test_client_is_thread_safe(stripe.http_client.Urllib2Client)
