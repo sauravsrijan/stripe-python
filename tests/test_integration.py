@@ -138,13 +138,16 @@ class TestIntegration(object):
             def do_GET(self):
                 with self.__class__.lock:
                     self.__class__.num_requests += 1
+                    req_num = self.__class__.num_requests
 
                 self.send_response(200)
                 self.send_header(
                     "Content-Type", "application/json; charset=utf-8"
                 )
                 self.end_headers()
-                self.wfile.write(json.dumps({}).encode("utf-8"))
+                self.wfile.write(
+                    json.dumps({"req_num": req_num}).encode("utf-8")
+                )
                 return
 
         self.setup_mock_server(MockServerRequestHandler)
@@ -152,13 +155,25 @@ class TestIntegration(object):
 
         stripe.default_http_client = client_ctor()
 
-        threads = [Thread(target=lambda: stripe.Balance.retrieve()) for i in range(10)]
+        seen_responses = set()
+        seen_responses_lock = Lock()
+
+        def work():
+            res = stripe.Balance.retrieve()
+            req_num = res["req_num"]
+            with seen_responses_lock:
+                seen_responses.add(req_num)
+
+        threads = [Thread(target=work) for i in range(10)]
         for t in threads:
             t.start()
         for t in threads:
             t.join()
 
+        # server should have seen 10 unique requests
         assert MockServerRequestHandler.num_requests == 10
+        # client should have seen 10 unique responses
+        assert len(seen_responses) == 10
 
     def test_requests_client_thread_safety(self):
         self._test_client_is_thread_safe(stripe.http_client.RequestsClient)
