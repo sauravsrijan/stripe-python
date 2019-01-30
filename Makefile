@@ -4,6 +4,7 @@ init:
 	# but no new version has been released yet.
 	pip install --upgrade pipenv==2018.10.13
 	pipenv install --dev --skip-lock
+	pip install pycurl
 
 test:
 	pipenv run tox -p auto
