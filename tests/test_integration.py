@@ -2,14 +2,21 @@ import sys
 from threading import Thread, Lock
 import json
 import warnings
+import time
 
 import stripe
 import pytest
 
 if sys.version_info[0] < 3:
     from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
+    from SocketServer import ThreadingMixIn
 else:
     from http.server import BaseHTTPRequestHandler, HTTPServer
+    from socketserver import ThreadingMixIn
+
+
+class MockHTTPServer(ThreadingMixIn, HTTPServer):
+    pass
 
 
 class TestIntegration(object):
@@ -45,7 +52,7 @@ class TestIntegration(object):
     def setup_mock_server(self, handler):
         # Configure mock server.
         # Passing 0 as the port will cause a random free port to be chosen.
-        self.mock_server = HTTPServer(("localhost", 0), handler)
+        self.mock_server = MockHTTPServer(("localhost", 0), handler)
         _, self.mock_server_port = self.mock_server.server_address
 
         # Start running mock server in a separate thread.
@@ -139,6 +146,8 @@ class TestIntegration(object):
                 with self.__class__.lock:
                     self.__class__.num_requests += 1
                     req_num = self.__class__.num_requests
+
+                time.sleep(req_num * 10 / 1000)
 
                 self.send_response(200)
                 self.send_header(
