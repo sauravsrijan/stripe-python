@@ -23,6 +23,7 @@ env:
   global:
     # If changing this number, please also change it in `tests/conftest.py`.
     - STRIPE_MOCK_VERSION=0.42.0
+    - PYCURL_SSL_LIBRARY=openssl
 
 before_install:
   # Unpack and start stripe-mock so that the test suite can talk to it
